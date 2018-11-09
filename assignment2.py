@@ -2,7 +2,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from pprint import pprint
 from functools import reduce
-from ct_support_code import fit_linreg_gradopt, pca_zm_proj
+from ct_support_code import fit_linreg_gradopt, pca_zm_proj, logreg_cost, fit_logreg, nn_cost, fit_nn, fit_gd
 import scipy
 import scipy.io
 import math
@@ -12,8 +12,6 @@ EXERCISE 1
 '''
 def process_data():
     ct_data = scipy.io.loadmat('ct_data.mat', squeeze_me=True)
-    # print (ct_data)
-    # pprint(ct_data)         # print the elements from dictionary
 
     X_train = ct_data['X_train']        # (40754, 384)
     X_val = ct_data['X_val']            # (5785, 384)
@@ -40,6 +38,16 @@ def process_data():
 
     # Ex 3
     # decrease_and_increase_input(X_train=X_train, X_val=X_val, y_train=y_train, y_val=y_val)
+
+    # Ex 4
+    # invent_classification(X_train=X_train, X_val=X_val, y_train=y_train, y_val=y_val)
+
+    # Ex 5
+    # neural_network(X_train=X_train, X_val=X_val, y_train=y_train, y_val=y_val)
+
+    # Ex 6
+    gradient_descent(X_train=X_train, X_val=X_val, y_train=y_train, y_val=y_val, X_test=X_test, y_test=y_test)
+
 
 '''
 EXERCISE 1.a
@@ -70,10 +78,6 @@ def compute_standard_error(y_train, y_val):
     sem_y_val = std_y_val / np.sqrt(len(y_val))
     print ("sem_y_val: ", sem_y_val)
 
-    '''
-    ### EXPLAIN THE THING WITH 95% for 2*sem
-    ### EXPLAIN WHY THE BARS ARE MISLEADING HERE
-    '''
 
 '''
 EXERCISE 1.b
@@ -97,7 +101,7 @@ def remove_unnecessary_features(X_train, X_val, X_test):
     print (to_delete)
     print (len(to_delete))
 
-    # Remove categories
+    # Filter categories
     X_train_first, X_train_second = filter_remove_categories(to_delete, X_train_delete_1, X_train_delete_2)
     print ("X_train first: ", X_train_first)
     print ("X_train second: ", X_train_second)
@@ -126,10 +130,12 @@ def remove_constant_features(X):
             X_delete_1.append(i)
     return X_delete_1
 
+
 def remove_duplicates_features(X):
     unique, train_indices = np.unique(X, return_index=True, axis=1)
     X_delete_2 = list(set(range(X.shape[1])) - set(train_indices))
     return X_delete_2
+
 
 def filter_remove_categories(to_delete, X_delete_1, X_delete_2):
     X_first = []
@@ -147,31 +153,25 @@ EXERCISE 2
 '''
 def set_linear_regression_baseline(X_train, X_val, y_train, y_val):
     # For training
-    err_lstsq = least_squares(X_train, y_train)             # 0.35524169481074713
-    print ("ERROR Least Squares: ", err_lstsq)
-    err = fit_linreg(X_train, y_train, 10)                  # 0.36915529643475953
-    print ("ERROR Regression: ", err)
-    ww, bb = fit_linreg_gradopt(X_train, y_train, 10)
-    err_gbo = error_gradopt(X_train, y_train, ww, bb)       # 0.35575973762757745
-    print ("ERROR Gradient-Based Optimizer: ", err_gbo)
+    w_ls, b_ls = least_squares(X_train, y_train)
+    err = compute_err(X=X_train, yy=y_train, ww=w_ls, bb=b_ls)
+    print ("ERROR Least Squares:", err)             # 0.35524169481074713
+    X_prime, y_prime, w_prime = fit_linreg(X_train, y_train, 10)
+    err = compute_err(X=X_prime, yy=y_prime, ww=w_prime)
+    print ("ERROR Regression with Regularization:", err)# 0.36915529643475953
+    w_grad, b_grad = fit_linreg_gradopt(X_train, y_train, 10)
+    err = compute_err(X=X_train, yy=y_train, ww=w_grad, bb=b_grad)
+    print ("ERROR Gradient-Based Optimizer:", err)  # 0.35575973762757745
 
     # For validation
-    err_lstsq = least_squares(X_val, y_val)                 # 0.18749417046818448
-    print ("ERROR Least Squares: ", err_lstsq)
-    err = fit_linreg(X_val, y_val, 10)                      # 0.29502328132809175
-    print ("ERROR Regression: ", err)
-    ww, bb = fit_linreg_gradopt(X_val, y_val, 10)
-    err_gbo = error_gradopt(X_val, y_val, ww, bb)           # 0.1988673366957355
-    print ("ERROR Gradient-Based Optimizer: ", err_gbo)
+    err = compute_err(X=X_val, yy=y_val, ww=w_ls, bb=b_ls)
+    print ("ERROR Least Squares:", err)             # 0.4182210942058271
+    X_prime, y_prime, dummy = fit_linreg(X_val, y_val, 10)
+    err = compute_err(X=X_prime, yy=y_prime, ww=w_prime)
+    print ("ERROR Regression with Regularization:", err)# 0.47376619192358777
+    err = compute_err(X=X_val, yy=y_val, ww=w_grad, bb=b_grad)
+    print ("ERROR Gradient-Based Optimizer:", err)  # 0.42060375407081924
 
-    '''
-    The results obtained from the Gradient-Based Optimizer function for root
-    mean square error were better that the ones obtained using regularization.
-    More than that, the results from the Gradient-Based Optimizer were similar
-    with the ones obtained using least squares without regularization.
-
-    ### WHY IS THAT
-    '''
 
 def fit_linreg(X, yy, alpha):
     D = X.shape[1]
@@ -179,22 +179,19 @@ def fit_linreg(X, yy, alpha):
     yy_prime = np.concatenate([yy, np.zeros(D)])
     alphaI = alpha * np.identity(D)
     X_prime = np.concatenate([X, alphaI], axis=0)
-
     w_prime = np.linalg.lstsq(X_prime, yy_prime, rcond=0)[0]
-    yy_prime_predicted = X_prime.dot(w_prime)
 
-    return root_mean_square_error(y_expected=yy_prime, y_predicted=yy_prime_predicted)
+    return X_prime, yy_prime, w_prime
 
 
 def least_squares(X, yy):
     X_bias = np.concatenate([np.ones((X.shape[0],1)), X], axis=1)
     w_bias = np.linalg.lstsq(X_bias, yy, rcond=0)[0];
 
-    y_predicted = X_bias.dot(w_bias)
+    return w_bias[1:], w_bias[0]
 
-    return root_mean_square_error(y_expected=yy, y_predicted=y_predicted)
 
-def error_gradopt(X, yy, ww, bb):
+def compute_err(X, yy, ww, bb=0):
     y_predicted = X.dot(ww) + bb
     return root_mean_square_error(y_expected=yy, y_predicted=y_predicted)
 
@@ -206,23 +203,46 @@ def root_mean_square_error(y_expected, y_predicted):
 
     return np.sqrt(sum/len(y_expected))
 
+
 '''
 EXERCISE 3
 '''
 def decrease_and_increase_input(X_train, X_val, y_train, y_val):
-    # err = pca(X=X_train, yy=y_train, alpha=10, K=10)
-    # print ("Training error for K = 10: ", err)
-    # err = pca(X=X_train, yy=y_train, alpha=10, K=100)
-    # print ("Training error for K = 100: ", err)
-    # err = pca(X=X_val, yy=y_val, alpha=10, K=10)
-    # print ("Validation error for K = 10: ", err)
-    # err = pca(X=X_val, yy=y_val, alpha=10, K=100)
-    # print ("Validation error for K = 100: ", err)
+    # Ex 3.a
+    '''
+    # For training
+    V = pca(X=X_train, yy=y_train, alpha=10, K=10)
+    X_reduced = X_train.dot(V)
+    X_prime, yy_prime, w_prime = fit_linreg(X_reduced, y_train, 10)
+    err = compute_err(X=X_prime, yy=yy_prime, ww = w_prime)
+    print ("Training error for K = 10: ", err)  # 0.5756376489484005
+    X_reduced = X_val.dot(V)
+    X_prime, yy_prime, dummy = fit_linreg(X_reduced, y_val, 10)
+    err = compute_err(X=X_prime, yy=yy_prime, ww = w_prime)
+    print ("Validation error for K = 10: ", err)# 0.5757941612096046
 
-    err = histogram(X=X_train, yy=y_train, alpha=10)
-    print ("Training error: ", err)
-    err = histogram(X=X_val, yy=y_val, alpha=10)
-    print ("Validation error: ", err)
+    # For validation
+    V = pca(X=X_train, yy=y_train, alpha=10, K=100)
+    X_reduced = X_train.dot(V)
+    X_prime, yy_prime, w_prime = fit_linreg(X_reduced, y_train, 10)
+    err = compute_err(X=X_prime, yy=yy_prime, ww = w_prime)
+    print ("Training error for K = 100: ", err) # 0.4153790239683063
+    X_reduced = X_val.dot(V)
+    X_prime, yy_prime, dummy = fit_linreg(X_reduced, y_val, 10)
+    err = compute_err(X=X_prime, yy=yy_prime, ww = w_prime)
+    print ("Validation error for K = 100: ", err)# 0.4605743588041712
+    '''
+
+    # Ex 3.b
+    '''
+    X_prime, yy_prime, w_prime = histogram(X=X_train, yy=y_train, alpha=10)
+    err = compute_err(X=X_prime, yy=yy_prime, ww=w_prime)
+    print ("Training error: ", err)             # 0.3260341808564488
+    X_prime, yy_prime, dummy = histogram(X=X_val, yy=y_val, alpha=10)
+    err = compute_err(X=X_prime, yy=yy_prime, ww=w_prime)
+    print ("Validation error: ", err)           # 0.38817888465014794
+    '''
+
 
 '''
 EXERCISE 3.a
@@ -231,55 +251,204 @@ def pca(X, yy, alpha, K):
     X_mu = np.mean(X, 0)
     X_centred = X - X_mu
 
-    V = pca_zm_proj(X=X_centred, K=K)
-    X_reduced = X.dot(V)
-    return fit_linreg(X_reduced, yy, alpha)
+    return pca_zm_proj(X=X_centred, K=K)
 
-    '''
-    ### EXPLAIN WHY ERROR IS WORSE WITH PCA (WITH DECREASING K)
-    '''
-
-    # Training error for K = 10:  0.5756376489484005
-    # Training error for K = 100:  0.4153790239683063
-    # Validation error for K = 10:  (0.5673115345895073+0j)
-    # Validation error for K = 100:  (0.3363259856687762+0j)
 
 '''
 EXERCISE 3.b
 '''
 def histogram(X, yy, alpha):
+    # 46th feature - histogram
     # plt.clf()
     # plt.hist(X[:,45], bins= 20) #len(list(set(X[:,46])))//100)
     # plt.show()
-    #
+    count_0, count_25, count_0_per, count_25_per = compute_percentage(X[:,46])
+    print('Count of O ({0}); Count of -0.25 ({1}) for 46th feature'.format(count_0, count_25))
+    print('Percentage of O ({0}); Percentage of -0.25 ({1}) for 46th feature'.format(count_0_per, count_25_per))
+
+    # all training data - histogram
     # plt.clf()
     # plt.hist(np.ravel(X), bins= 20)
     # plt.show()
+    count_0, count_25, count_0_per, count_25_per = compute_percentage(np.ravel(X))
+    print('Count of O ({0}); Count of -0.25 ({1}) for all data'.format(count_0, count_25))
+    print('Percentage of O ({0}); Percentage of -0.25 ({1}) for all data'.format(count_0_per, count_25_per))
 
-    # count_0 = 0
-    # count_25 = 0
-    # for i in X[:,46]:
-    #     if i == 0:
-    #         count_0 += 1
-    #     elif i == -0.25:
-    #         count_25 += 1
-    # print (count_0, count_25)
 
     aug_fn = lambda X: np.concatenate([X, X==0, X<0], axis=1)
     X_prime = aug_fn(X)
 
+    # all training data - histogram (after )
     # plt.clf()
     # plt.hist(np.ravel(X_prime), bins= 20)
     # plt.show()
+    count_0, count_25, count_0_per, count_25_per = compute_percentage(np.ravel(X_prime))
+    print('Count of O ({0}); Count of -0.25 ({1}) for all data'.format(count_0, count_25))
+    print('Percentage of O ({0}); Percentage of -0.25 ({1}) for all data'.format(count_0_per, count_25_per))
 
     return fit_linreg(X_prime, yy, alpha)
 
-    '''
-    ### EXPLAIN WHY ERROR IS LOWER WHEN AUGMENTING THESE DATA
-    '''
 
-    # Training error:  0.3260341808564488
-    # Validation error:  0.20646543050845095
+def compute_percentage(X):
+    count_0 = 0
+    count_25 = 0
+    for i in X:
+        if i == 0:
+            count_0 += 1
+        elif i == -0.25:
+            count_25 += 1
+
+    count_0_per = count_0 * 100 / len(X)
+    count_25_per = count_25 * 100 / len(X)
+    return count_0, count_25, count_0_per, count_25_per
+
+
+'''
+EXERCISE 4
+'''
+def invent_classification(X_train, X_val, y_train, y_val):
+    K = 10          # number of thresholded classification problems to fit
+    # For training
+    ww_log, bb_log = use_logreg(X=X_train, yy=y_train, alpha=10, K=10)
+    X_reduced = X_train.dot(ww_log) + bb_log
+    X_prime, yy_prime, w_prime = fit_linreg(X=X_reduced, yy=y_train, alpha=10)
+    err = compute_err(X=X_prime, yy=yy_prime, ww = w_prime)
+    print ("ERROR Logistic Regression: ", err)  # 0.42230977042363277
+
+    # For validation
+    X_reduced = X_val.dot(ww_log) + bb_log
+    X_prime, yy_prime, dummy = fit_linreg(X=X_reduced, yy=y_val, alpha=10)
+    err = compute_err(X=X_prime, yy=yy_prime, ww = w_prime)
+    print ("ERROR Logistic Regression: ", err)  # 0.4477788975944975
+
+
+def use_logreg(X, yy, alpha, K):
+    mx = np.max(yy)
+    mn = np.min(yy)
+    hh = (mx-mn)/(K+1)
+    thresholds = np.linspace(mn+hh, mx-hh, num=K, endpoint=True)
+    ww_array = []
+    bb_array = []
+    for kk in range(K):
+        labels = yy > thresholds[kk]
+        ww, bb = fit_logreg(X, labels, alpha)
+        ww_array.append(ww)
+        bb_array.append(bb)
+
+    ww = np.column_stack(ww_array)
+    bb = np.column_stack(bb_array)
+
+    return ww, bb
+
+
+'''
+EXERCISE 5
+'''
+def neural_network(X_train, X_val, y_train, y_val):
+    # Random Initialization
+    params = random_initialization(X_train.shape[1], 10)
+    new_params = fit_nn(params=params, X=X_train, yy=y_train, alpha=10)
+    y_predicted = nn_cost(params=new_params, X=X_train, alpha=10)
+    err = root_mean_square_error(y_expected=y_train, y_predicted=y_predicted)
+    print ("ERR Training Random:", err)            # 0.10109716170454178
+    y_predicted = nn_cost(params=new_params, X=X_val, alpha=10)
+    err = root_mean_square_error(y_expected=y_val, y_predicted=y_predicted)
+    print ("ERR Validation Random:", err)          # 0.24988936555719002
+
+    # Q4 Initialization
+    params = q4_initialization(X_train, y_train, 10, 10)
+    new_params = fit_nn(params=params, X=X_train, yy=y_train, alpha=10)
+    y_predicted = nn_cost(params=new_params, X=X_train, alpha=10)
+    err = root_mean_square_error(y_expected=y_train, y_predicted=y_predicted)
+    print ("ERR Training Ex4:", err)                # 0.1034439502578436
+    y_predicted = nn_cost(params=new_params, X=X_val, alpha=10)
+    err = root_mean_square_error(y_expected=y_val, y_predicted=y_predicted)
+    print ("ERR Validation Ex4:", err)              # 0.2651730161911833
+
+
+def q4_initialization(X, yy, alpha, K):
+    V, bk = use_logreg(X=X, yy=yy, alpha=alpha, K=K)
+    X_reduced = X.dot(V) + bk
+    X_prime, yy_prime, w_prime = fit_linreg(X=X_reduced, yy=yy, alpha=alpha)
+    ww = w_prime
+    bb = 0
+
+    return (ww, bb, V.T, bk.T.reshape(K,))
+
+def random_initialization(D, K):
+    V = np.random.randn(K, D)
+    bk = np.random.randn(K)
+    ww = np.random.randn(K)
+    bb = np.random.randn(1)[0]
+
+    return (ww, bb, V, bk)
+
+
+'''
+EXERCISE 6
+'''
+def gradient_descent(X_train, X_val, y_train, y_val, X_test, y_test):
+    init = (np.zeros(X_train.shape[1]), np.array(0))
+    ww, bb, params_arr = fit_gd(init, X=X_train, yy=y_train, iter=500, learning_rate=0.05)
+
+    errors = plot_errors(params_arr = params_arr, X=X_train, yy=y_train)
+    plot_output(X=X_train, yy=y_train, ww=ww, bb=bb)
+    print ("ERROR GD Training:", errors[-1])        # 0.3704747114536849
+
+    errors = plot_errors(params_arr = params_arr, X=X_val, yy=y_val)
+    plot_output(X=X_val, yy=y_val, ww=ww, bb=bb)
+    print ("ERROR GD Validation:", errors[-1])      # 0.43155709194018754
+
+    errors = plot_errors(params_arr = params_arr, X=X_test, yy=y_test)
+    plot_output(X=X_test, yy=y_test, ww=ww, bb=bb)
+    print ("ERROR GD Test:", errors[-1])            # 0.4297184947308366
+
+    # lr = 0.01
+    # ERROR GD Training: 0.4034079522761693
+    # ERROR GD Validation: 0.4410599893520035
+
+    # lr = 0.02
+    # ERROR GD Training: 0.38609127137182075
+    # ERROR GD Validation: 0.43251353468775006
+
+    # lr = 0.05
+    # ERROR GD Training: 0.3704747114536849
+    # ERROR GD Validation: 0.43155709194018754
+    # ERROR GD Test: 0.4297184947308366
+
+def plot_errors(params_arr, X, yy):
+    errors = []
+    for ww, bb in params_arr:
+        y_predicted = X.dot(ww) + bb
+        err = root_mean_square_error(y_expected=yy, y_predicted=y_predicted)
+        errors.append(err)
+
+    grid = np.linspace(1, len(errors), len(errors))
+
+    plt.clf()
+    plt.plot(grid, errors, 'r-')
+    plt.legend()
+    plt.ylabel("error")
+    plt.xlabel("#iterations")
+    plt.show()
+
+    return errors
+
+def plot_output(X, yy, ww, bb=0):
+    y_predicted = X.dot(ww) + bb
+    grid = np.linspace(1, len(yy), len(yy))
+
+    plt.clf()
+    plt.plot(grid, yy, 'b-', label='Real')
+    plt.plot(grid, y_predicted, 'r-', label='Fitting', alpha=0.9)
+    plt.legend()
+    plt.ylabel("output")
+    plt.xlabel("#points")
+    plt.show()
+
+    # return root_mean_square_error(y_expected=yy, y_predicted=y_predicted)
+
+
 
 
 if __name__ == '__main__':

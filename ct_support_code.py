@@ -167,6 +167,14 @@ def logreg_cost(params, X, yy, alpha):
     return E, (ww_bar, bb_bar)
 
 
+def fit_logreg(X, yy, alpha):
+    D = X.shape[1]
+    args = (X, yy, alpha)
+    init = (np.zeros(D), np.array(0))
+    ww, bb = minimize_list(logreg_cost, init, args)
+    return ww, bb
+
+
 def nn_cost(params, X, yy=None, alpha=None):
     """NN_COST simple neural network cost function and gradients, or predictions
 
@@ -216,3 +224,91 @@ def nn_cost(params, X, yy=None, alpha=None):
     bk_bar = np.sum(A_bar, 0)
 
     return E, (ww_bar, bb_bar, V_bar, bk_bar)
+
+
+def fit_nn(params, X, yy=None, alpha=None):
+    args = (X, yy, alpha)
+    ww_bar, bb_bar, V_bar, bk_bar = minimize_list(nn_cost, params, args)
+
+    return (ww_bar, bb_bar, V_bar, bk_bar)
+
+'''
+def gradient_descent_cost(params, X, yy=None, iter=100, learning_rate=0.0001):
+    m_current, b_current = params
+    N = float(len(yy))
+    for i in range(iter):
+        # print ("X shape:", X.shape)
+        # print ("yy shape:", yy.shape)
+        # print ("ww shape:", m_current.shape)
+        # print ("bb shape:", b_current.shape, b_current)
+        y_current = X.dot(m_current) + b_current
+        E = sum([data**2 for data in (yy - y_current)]) / N
+        m_gradient = -(2/float(N)) * sum(X.T.dot(yy - y_current))
+        b_gradient = -(2/float(N)) * sum(yy - y_current)
+        m_current = m_current - (learning_rate * m_gradient)
+        b_current = b_current - (learning_rate * b_gradient)
+    return m_current, b_current, E
+'''
+
+def gradient_descent(X, yy, ww, bb, learning_rate):
+    bb_gradient = np.array(0.)
+    ww_gradient = np.zeros(X.shape[1])
+    N = X.shape[0]
+    for i in range(0, N):
+        x = X[i][:]
+        y = yy[i]
+        bb_gradient += -(2/float(N)) * (y - (x.dot(ww) + bb))
+        ww_gradient += -(2/float(N)) * x * (y - (x.dot(ww) + bb))
+    bb_bar = bb - (learning_rate * bb_gradient)
+    ww_bar = ww - (learning_rate * ww_gradient)
+
+    return [ww_bar, bb_bar]
+
+
+def fit_gd(params, X, yy=None, iter=500, learning_rate=0.01):
+    ww = params[0]
+    bb = params[1]
+    params_arr = []
+    for i in range(iter):
+        print (i)
+        ww, bb = gradient_descent(X, yy, ww, bb, learning_rate)
+        params_arr.append((ww, bb))
+
+    return [ww, bb, params_arr]
+
+
+# def grad_test(params, X, yy, learning_rate):
+#     ww, bb = params
+#     bb_gradient = np.array(0.)
+#     ww_gradient = np.zeros(X.shape[1])
+#     N = X.shape[0]
+#
+#     ff = np.dot(X, ww) + bb
+#     res = ff - yy
+#     E = np.dot(res, res)
+#
+#     for i in range(0, N):
+#         x = X[i][:]
+#         y = yy[i]
+#         bb_gradient += -(2/float(N)) * (y - (x.dot(ww) + bb))
+#         ww_gradient += -(2/float(N)) * x * (y - (x.dot(ww) + bb))
+#     bb_bar = bb - (learning_rate * bb_gradient)
+#     ww_bar = ww - (learning_rate * ww_gradient)
+#
+#     return E, [ww_bar, bb_bar]
+#
+#
+# def fit_grad_test(params, X, yy, lr):
+#     args = (X, yy, lr)
+#     ww, bb = minimize_list(grad_test, params, args)
+#     return ww, bb
+# def linear_regression(X, y, m_current=0, b_current=0, epochs=1000, learning_rate=0.0001):
+#      N = float(len(y))
+#      for i in range(epochs):
+#           y_current = (m_current * X) + b_current
+#           cost = sum([data**2 for data in (y-y_current)]) / N
+#           m_gradient = -(2/N) * sum(X * (y - y_current))
+#           b_gradient = -(2/N) * sum(y - y_current)
+#           m_current = m_current - (learning_rate * m_gradient)
+#           b_current = b_current - (learning_rate * b_gradient)
+#      return m_current, b_current, cost
