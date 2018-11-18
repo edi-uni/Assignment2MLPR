@@ -6,6 +6,7 @@ from ct_support_code import fit_linreg_gradopt, pca_zm_proj, logreg_cost, fit_lo
 import scipy
 import scipy.io
 import math
+import timeit
 
 '''
 EXERCISE 1
@@ -43,10 +44,10 @@ def process_data():
     # invent_classification(X_train=X_train, X_val=X_val, y_train=y_train, y_val=y_val)
 
     # Ex 5
-    # neural_network(X_train=X_train, X_val=X_val, y_train=y_train, y_val=y_val)
+    neural_network(X_train=X_train, X_val=X_val, y_train=y_train, y_val=y_val)
 
     # Ex 6
-    gradient_descent(X_train=X_train, X_val=X_val, y_train=y_train, y_val=y_val, X_test=X_test, y_test=y_test)
+    # gradient_descent(X_train=X_train, X_val=X_val, y_train=y_train, y_val=y_val, X_test=X_test, y_test=y_test)
 
 
 '''
@@ -155,30 +156,34 @@ def set_linear_regression_baseline(X_train, X_val, y_train, y_val):
     # For training
     w_ls, b_ls = least_squares(X_train, y_train)
     err = compute_err(X=X_train, yy=y_train, ww=w_ls, bb=b_ls)
-    print ("ERROR Least Squares:", err)             # 0.35524169481074713
+    print ("ERROR Least Squares:", err)                 # 0.35524169481074713
     X_prime, y_prime, w_prime = fit_linreg(X_train, y_train, 10)
     err = compute_err(X=X_prime, yy=y_prime, ww=w_prime)
-    print ("ERROR Regression with Regularization:", err)# 0.36915529643475953
+    print ("ERROR Regression with Regularization:", err)# 0.3563466330636692
     w_grad, b_grad = fit_linreg_gradopt(X_train, y_train, 10)
     err = compute_err(X=X_train, yy=y_train, ww=w_grad, bb=b_grad)
-    print ("ERROR Gradient-Based Optimizer:", err)  # 0.35575973762757745
+    print ("ERROR Gradient-Based Optimizer:", err)      # 0.35575973762757745
 
     # For validation
     err = compute_err(X=X_val, yy=y_val, ww=w_ls, bb=b_ls)
-    print ("ERROR Least Squares:", err)             # 0.4182210942058271
+    print ("ERROR Least Squares:", err)                 # 0.4182210942058271
     X_prime, y_prime, dummy = fit_linreg(X_val, y_val, 10)
     err = compute_err(X=X_prime, yy=y_prime, ww=w_prime)
-    print ("ERROR Regression with Regularization:", err)# 0.47376619192358777
+    print ("ERROR Regression with Regularization:", err)# 0.4202908632281942
     err = compute_err(X=X_val, yy=y_val, ww=w_grad, bb=b_grad)
-    print ("ERROR Gradient-Based Optimizer:", err)  # 0.42060375407081924
+    print ("ERROR Gradient-Based Optimizer:", err)      # 0.42060375407081924
 
 
 def fit_linreg(X, yy, alpha):
+    N = X.shape[0]
     D = X.shape[1]
 
     yy_prime = np.concatenate([yy, np.zeros(D)])
-    alphaI = alpha * np.identity(D)
-    X_prime = np.concatenate([X, alphaI], axis=0)
+    alphaI = np.sqrt(alpha) * np.identity(D)
+    X_part = np.concatenate([X, alphaI], axis=0)
+    X_bias = np.ones(N+D).reshape(N+D, 1)
+    X_bias[-D:] = 0
+    X_prime = np.concatenate([X_bias, X_part], axis = 1)
     w_prime = np.linalg.lstsq(X_prime, yy_prime, rcond=0)[0]
 
     return X_prime, yy_prime, w_prime
@@ -214,33 +219,33 @@ def decrease_and_increase_input(X_train, X_val, y_train, y_val):
     V = pca(X=X_train, yy=y_train, alpha=10, K=10)
     X_reduced = X_train.dot(V)
     X_prime, yy_prime, w_prime = fit_linreg(X_reduced, y_train, 10)
-    err = compute_err(X=X_prime, yy=yy_prime, ww = w_prime)
-    print ("Training error for K = 10: ", err)  # 0.5756376489484005
+    err = compute_err(X=X_prime, yy=yy_prime, ww=w_prime)
+    print ("Training error for K = 10: ", err)  # 0.5729503891901699
     X_reduced = X_val.dot(V)
     X_prime, yy_prime, dummy = fit_linreg(X_reduced, y_val, 10)
-    err = compute_err(X=X_prime, yy=yy_prime, ww = w_prime)
-    print ("Validation error for K = 10: ", err)# 0.5757941612096046
+    err = compute_err(X=X_prime, yy=yy_prime, ww=w_prime)
+    print ("Validation error for K = 10: ", err)# 5719793306418868
 
     # For validation
     V = pca(X=X_train, yy=y_train, alpha=10, K=100)
     X_reduced = X_train.dot(V)
     X_prime, yy_prime, w_prime = fit_linreg(X_reduced, y_train, 10)
-    err = compute_err(X=X_prime, yy=yy_prime, ww = w_prime)
-    print ("Training error for K = 100: ", err) # 0.4153790239683063
+    err = compute_err(X=X_prime, yy=yy_prime, ww=w_prime)
+    print ("Training error for K = 100: ", err) # 0.410527496797554
     X_reduced = X_val.dot(V)
     X_prime, yy_prime, dummy = fit_linreg(X_reduced, y_val, 10)
-    err = compute_err(X=X_prime, yy=yy_prime, ww = w_prime)
-    print ("Validation error for K = 100: ", err)# 0.4605743588041712
+    err = compute_err(X=X_prime, yy=yy_prime, ww=w_prime)
+    print ("Validation error for K = 100: ", err)# 0.4317438278524941
     '''
 
     # Ex 3.b
     '''
     X_prime, yy_prime, w_prime = histogram(X=X_train, yy=y_train, alpha=10)
     err = compute_err(X=X_prime, yy=yy_prime, ww=w_prime)
-    print ("Training error: ", err)             # 0.3260341808564488
+    print ("Training error: ", err)             # 0.3157491192020929
     X_prime, yy_prime, dummy = histogram(X=X_val, yy=y_val, alpha=10)
     err = compute_err(X=X_prime, yy=yy_prime, ww=w_prime)
-    print ("Validation error: ", err)           # 0.38817888465014794
+    print ("Validation error: ", err)           # 0.3570051802759181
     '''
 
 
@@ -311,15 +316,17 @@ def invent_classification(X_train, X_val, y_train, y_val):
     # For training
     ww_log, bb_log = use_logreg(X=X_train, yy=y_train, alpha=10, K=10)
     X_reduced = X_train.dot(ww_log) + bb_log
-    X_prime, yy_prime, w_prime = fit_linreg(X=X_reduced, yy=y_train, alpha=10)
+    X_sigmoid = 1 / (1 + np.exp(-X_reduced))
+    X_prime, yy_prime, w_prime = fit_linreg(X=X_sigmoid, yy=y_train, alpha=10)
     err = compute_err(X=X_prime, yy=yy_prime, ww = w_prime)
-    print ("ERROR Logistic Regression: ", err)  # 0.42230977042363277
+    print ("ERROR Logistic Regression: ", err)  # 0.13953545921776178
 
     # For validation
     X_reduced = X_val.dot(ww_log) + bb_log
-    X_prime, yy_prime, dummy = fit_linreg(X=X_reduced, yy=y_val, alpha=10)
+    X_sigmoid = 1 / (1 + np.exp(-X_reduced))
+    X_prime, yy_prime, dummy = fit_linreg(X=X_sigmoid, yy=y_val, alpha=10)
     err = compute_err(X=X_prime, yy=yy_prime, ww = w_prime)
-    print ("ERROR Logistic Regression: ", err)  # 0.4477788975944975
+    print ("ERROR Logistic Regression: ", err)  # 0.25687979969894703
 
 
 def use_logreg(X, yy, alpha, K):
@@ -350,28 +357,29 @@ def neural_network(X_train, X_val, y_train, y_val):
     new_params = fit_nn(params=params, X=X_train, yy=y_train, alpha=10)
     y_predicted = nn_cost(params=new_params, X=X_train, alpha=10)
     err = root_mean_square_error(y_expected=y_train, y_predicted=y_predicted)
-    print ("ERR Training Random:", err)            # 0.10109716170454178
+    print ("ERR Training Random:", err)            # 0.10272908967311808
     y_predicted = nn_cost(params=new_params, X=X_val, alpha=10)
     err = root_mean_square_error(y_expected=y_val, y_predicted=y_predicted)
-    print ("ERR Validation Random:", err)          # 0.24988936555719002
+    print ("ERR Validation Random:", err)          # 0.26861494023916044
 
     # Q4 Initialization
     params = q4_initialization(X_train, y_train, 10, 10)
     new_params = fit_nn(params=params, X=X_train, yy=y_train, alpha=10)
     y_predicted = nn_cost(params=new_params, X=X_train, alpha=10)
     err = root_mean_square_error(y_expected=y_train, y_predicted=y_predicted)
-    print ("ERR Training Ex4:", err)                # 0.1034439502578436
+    print ("ERR Training Ex4:", err)                # 0.10446102065201333
     y_predicted = nn_cost(params=new_params, X=X_val, alpha=10)
     err = root_mean_square_error(y_expected=y_val, y_predicted=y_predicted)
-    print ("ERR Validation Ex4:", err)              # 0.2651730161911833
+    print ("ERR Validation Ex4:", err)              # 0.2574382823541626
 
 
 def q4_initialization(X, yy, alpha, K):
     V, bk = use_logreg(X=X, yy=yy, alpha=alpha, K=K)
     X_reduced = X.dot(V) + bk
-    X_prime, yy_prime, w_prime = fit_linreg(X=X_reduced, yy=yy, alpha=alpha)
-    ww = w_prime
-    bb = 0
+    X_sigmoid = 1 / (1 + np.exp(-X_reduced))
+    X_prime, yy_prime, w_prime = fit_linreg(X=X_sigmoid, yy=yy, alpha=alpha)
+    ww = w_prime[1:]
+    bb = w_prime[0]
 
     return (ww, bb, V.T, bk.T.reshape(K,))
 
